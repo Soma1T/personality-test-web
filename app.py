@@ -32,7 +32,6 @@ question_order = list(df_prepared['poll_id'].unique())
 total_questions = len(question_order)
 
 def encode_answers(answers_dict):
-    # Сериализуем словарь ответов в строку (для передачи в форме)
     json_str = json.dumps(answers_dict)
     b64 = base64.urlsafe_b64encode(json_str.encode()).decode()
     return b64
@@ -47,7 +46,6 @@ def decode_answers(encoded_str):
 @app.route('/', methods=['GET', 'POST'])
 def index():
     if request.method == 'POST':
-        # Получаем ответы и индекс из формы
         encoded_answers = request.form.get('answers', '')
         answers = decode_answers(encoded_answers)
         q_idx = int(request.form.get('q_idx', 0))
@@ -57,12 +55,10 @@ def index():
             answers[str(current_poll_id)] = selected_answer
             q_idx += 1
     else:
-        # Начинаем с чистого листа при GET
         answers = {}
         q_idx = 0
 
     if q_idx >= total_questions:
-        # Переходим на результат, передав ответы в query string
         encoded = encode_answers(answers)
         return redirect(url_for('result', answers=encoded))
 
@@ -102,18 +98,23 @@ def result():
     best_match = None
 
     for user_id, row in pivot_df.iterrows():
-        matches = sum(
-            1 for q_id, ans in user_answers.items()
-            if str(q_id) in row.index and row[int(q_id)] == ans
-        )
+        matches = 0
+        for q_id, ans in user_answers.items():
+            if str(q_id) in row.index:
+                db_answer = row[int(q_id)]
+                if isinstance(db_answer, str) and isinstance(ans, str):
+                    if db_answer.strip().lower() == ans.strip().lower():
+                        matches += 1
+                elif db_answer == ans:
+                    matches += 1
         if matches > max_matches:
             max_matches = matches
             best_match = user_id
 
     if best_match is None:
         match_name = "Не найдено совпадений"
-        percent = 0
         max_matches = 0
+        percent = 0
     else:
         match_name = df_prepared[df_prepared['user_id'] == best_match]['user_name'].iloc[0]
         percent = (max_matches / total_questions) * 100

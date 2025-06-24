@@ -1,16 +1,11 @@
-max_matches = -1
-best_match = None
-
-for user_id, row in pivot_df.iterrows():
-    matches = 0
-    for q_id, ans in user_answers.items():
-        if str(q_id) in row.index:
-            db_answer = row[int(q_id)]
-            if isinstance(db_answer, str) and isinstance(ans, str):
-                if db_answer.strip().lower() == ans.strip().lower():
-                    matches += 1
-            elif db_answer == ans:
-                matches += 1
-    if matches > max_matches:
-        max_matches = matches
-        best_match = user_id
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Результат теста</title>
+</head>
+<body>
+    <h1>Вы похожи на {{ name }}!</h1>
+    <p>Совпадений: {{ matches }} из {{ total }} ({{ "%.1f"|format(percent) }}%)</p>
+    <a href="{{ url_for('index') }}">Пройти снова</a>
+</body>
+</html>

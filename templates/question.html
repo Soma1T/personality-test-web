@@ -1,9 +1,18 @@
-<form method="POST">
-    <p>{{ question }}</p>
-    {% for answer in answers %}
-      <input type="radio" name="answer" value="{{ answer }}" required> {{ answer }}<br>
-    {% endfor %}
-    <input type="hidden" name="q_idx" value="{{ q_idx }}">
-    <input type="hidden" name="answers" value="{{ answers_encoded }}">
-    <button type="submit">Далее</button>
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Вопрос {{ question_num }} из {{ total }}</title>
+</head>
+<body>
+  <h2>Вопрос {{ question_num }} из {{ total }}</h2>
+  <form method="POST">
+      <p>{{ question }}</p>
+      {% for answer in answers %}
+        <input type="radio" name="answer" value="{{ answer }}" required> {{ answer }}<br>
+      {% endfor %}
+      <input type="hidden" name="q_idx" value="{{ q_idx }}">
+      <input type="hidden" name="answers" value="{{ answers_encoded }}">
+      <button type="submit">Далее</button>
   </form>
+</body>
+</html>
