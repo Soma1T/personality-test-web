@@ -84,8 +84,12 @@ def index():
 
 @app.route('/result')
 def result():
+    import pprint  # Импортируем pprint для удобного вывода в консоль
+
     encoded_answers = request.args.get('answers', '')
     user_answers = decode_answers(encoded_answers)
+
+    print("User answers:", user_answers)  # <-- ОТЛАДКА: смотрим, что пришло от пользователя
 
     pivot_df = df_prepared.pivot_table(
         index='user_id',
@@ -94,18 +98,20 @@ def result():
         aggfunc='first'
     ).fillna('затрудняюсь ответить')
 
+    print("Pivot DF sample:\n", pivot_df.head())  # <-- ОТЛАДКА: выводим срез из базы
+
     max_matches = -1
     best_match = None
 
+    # Изменённый блок подсчёта совпадений:
     for user_id, row in pivot_df.iterrows():
         matches = 0
-        for q_id, ans in user_answers.items():
-            if str(q_id) in row.index:
-                db_answer = row[int(q_id)]
-                if isinstance(db_answer, str) and isinstance(ans, str):
-                    if db_answer.strip().lower() == ans.strip().lower():
-                        matches += 1
-                elif db_answer == ans:
+        for q_id_str, ans in user_answers.items():
+            q_id = int(q_id_str)
+            if q_id in row.index:
+                db_answer = row[q_id]
+                # Универсальное сравнение строк (без учета регистра и пробелов)
+                if str(db_answer).strip().lower() == str(ans).strip().lower():
                     matches += 1
         if matches > max_matches:
             max_matches = matches
@@ -113,8 +119,8 @@ def result():
 
     if best_match is None:
         match_name = "Не найдено совпадений"
-        max_matches = 0
         percent = 0
+        max_matches = 0
     else:
         match_name = df_prepared[df_prepared['user_id'] == best_match]['user_name'].iloc[0]
         percent = (max_matches / total_questions) * 100
