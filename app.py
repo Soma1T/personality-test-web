@@ -1,18 +1,18 @@
 from flask import Flask, render_template, request, redirect, session
 import pandas as pd
 import random
+import os
 
 app = Flask(__name__)
-app.secret_key = 'your_secret_key'  # Замени на свой безопасный ключ
+app.secret_key = 'your_secret_key'  # Замени на безопасный ключ
 
 # Загрузка и подготовка данных
 df_raw = pd.read_csv('polls_with_text.csv')
 df = df_raw[df_raw["message_text"] == "Социологический опрос"].copy()
 
-# Подготовка данных
 def prepare_data(df):
     df = df.drop_duplicates(['poll_id', 'user_id'], keep='last')
-    
+
     question_stats = df.groupby('poll_id')['answer'].agg(['nunique', 'count'])
     single_answer_questions = question_stats[question_stats['nunique'] == 1].index
     df = df[~df['poll_id'].isin(single_answer_questions)]
@@ -61,7 +61,6 @@ def index():
     question = group['question'].iloc[0]
     answers = group['answer'].unique().tolist()
 
-    # Сортируем: сначала обычные ответы, потом "затрудняюсь ответить"
     regular = [a for a in answers if a != 'затрудняюсь ответить']
     has_difficult = len(regular) != len(answers)
     sorted_answers = sorted(regular) + (['затрудняюсь ответить'] if has_difficult else [])
@@ -90,15 +89,20 @@ def result():
 
     for user_id, row in pivot_df.iterrows():
         matches = sum(
-            1 for q_id, ans in user_answers.items()
-            if str(q_id) in row.index and row[int(q_id)] == ans
+            1 for q_id_str, ans in user_answers.items()
+            if int(q_id_str) in row.index and row[int(q_id_str)] == ans
         )
         if matches > max_matches:
             max_matches = matches
             best_match = user_id
 
-    match_name = df_prepared[df_prepared['user_id'] == best_match]['user_name'].iloc[0]
-    percent = (max_matches / total_questions) * 100
+    if best_match is not None:
+        match_name = df_prepared[df_prepared['user_id'] == best_match]['user_name'].iloc[0]
+        percent = (max_matches / total_questions) * 100
+    else:
+        match_name = "Не найдено"
+        percent = 0.0
+        max_matches = 0
 
     return render_template(
         'result.html',
@@ -114,8 +118,5 @@ def reset():
     return redirect('/')
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000, debug=True)
-if __name__ == "__main__":
-    import os
     port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port)
+    app.run(host="0.0.0.0", port=port, debug=True)
