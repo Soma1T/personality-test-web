@@ -1,0 +1,16 @@
+<!doctype html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Вопрос {{ question_num }}/{{ total }}</title>
+</head>
+<body>
+    <h2>{{ question }}</h2>
+    <form method="post">
+        {% for ans in answers %}
+            <label><input type="radio" name="answer" value="{{ ans }}"> {{ ans }}</label><br>
+        {% endfor %}
+        <button type="submit">Далее</button>
+    </form>
+</body>
+</html>
