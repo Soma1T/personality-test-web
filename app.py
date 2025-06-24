@@ -1,10 +1,10 @@
-from flask import Flask, render_template, request, redirect, session
+from flask import Flask, render_template, request, redirect, url_for
 import pandas as pd
 import random
-import os
+import json
+import base64
 
 app = Flask(__name__)
-app.secret_key = 'your_secret_key'  # Замени на безопасный ключ
 
 # Загрузка и подготовка данных
 df_raw = pd.read_csv('polls_with_text.csv')
@@ -12,70 +12,84 @@ df = df_raw[df_raw["message_text"] == "Социологический опрос
 
 def prepare_data(df):
     df = df.drop_duplicates(['poll_id', 'user_id'], keep='last')
-
     question_stats = df.groupby('poll_id')['answer'].agg(['nunique', 'count'])
     single_answer_questions = question_stats[question_stats['nunique'] == 1].index
     df = df[~df['poll_id'].isin(single_answer_questions)]
-
     all_combinations = pd.MultiIndex.from_product(
         [df['poll_id'].unique(), df['user_id'].unique()],
         names=['poll_id', 'user_id']
     )
-
     df_full = df.set_index(['poll_id', 'user_id']).reindex(all_combinations).reset_index()
     df_full['answer'] = df_full['answer'].fillna('затрудняюсь ответить')
-
     user_map = df.drop_duplicates('user_id').set_index('user_id')['user_name']
     question_map = df.drop_duplicates('poll_id').set_index('poll_id')['question']
-
     df_full['user_name'] = df_full['user_id'].map(user_map)
     df_full['question'] = df_full['poll_id'].map(question_map)
-
     return df_full
 
 df_prepared = prepare_data(df)
-
-# Список вопросов в случайном порядке
 question_order = list(df_prepared['poll_id'].unique())
-random.shuffle(question_order)
 total_questions = len(question_order)
+
+def encode_answers(answers_dict):
+    # Сериализуем словарь ответов в строку (для передачи в форме)
+    json_str = json.dumps(answers_dict)
+    b64 = base64.urlsafe_b64encode(json_str.encode()).decode()
+    return b64
+
+def decode_answers(encoded_str):
+    try:
+        json_str = base64.urlsafe_b64decode(encoded_str.encode()).decode()
+        return json.loads(json_str)
+    except Exception:
+        return {}
 
 @app.route('/', methods=['GET', 'POST'])
 def index():
-    if 'answers' not in session:
-        session['answers'] = {}
-        session['q_idx'] = 0
-
     if request.method == 'POST':
+        # Получаем ответы и индекс из формы
+        encoded_answers = request.form.get('answers', '')
+        answers = decode_answers(encoded_answers)
+        q_idx = int(request.form.get('q_idx', 0))
         selected_answer = request.form.get('answer')
         if selected_answer is not None:
-            current_q = question_order[session['q_idx']]
-            session['answers'][str(current_q)] = selected_answer
-            session['q_idx'] += 1
+            current_poll_id = question_order[q_idx]
+            answers[str(current_poll_id)] = selected_answer
+            q_idx += 1
+    else:
+        # Начинаем с чистого листа при GET
+        answers = {}
+        q_idx = 0
 
-    if session['q_idx'] >= total_questions:
-        return redirect('/result')
+    if q_idx >= total_questions:
+        # Переходим на результат, передав ответы в query string
+        encoded = encode_answers(answers)
+        return redirect(url_for('result', answers=encoded))
 
-    current_poll_id = question_order[session['q_idx']]
+    current_poll_id = question_order[q_idx]
     group = df_prepared[df_prepared['poll_id'] == current_poll_id]
     question = group['question'].iloc[0]
-    answers = group['answer'].unique().tolist()
+    answers_list = group['answer'].unique().tolist()
 
-    regular = [a for a in answers if a != 'затрудняюсь ответить']
-    has_difficult = len(regular) != len(answers)
+    regular = [a for a in answers_list if a != 'затрудняюсь ответить']
+    has_difficult = len(regular) != len(answers_list)
     sorted_answers = sorted(regular) + (['затрудняюсь ответить'] if has_difficult else [])
 
+    encoded = encode_answers(answers)
     return render_template(
         'question.html',
         question=question,
         answers=sorted_answers,
-        question_num=session['q_idx'] + 1,
-        total=total_questions
+        question_num=q_idx + 1,
+        total=total_questions,
+        q_idx=q_idx,
+        answers_encoded=encoded
     )
 
 @app.route('/result')
 def result():
-    user_answers = session.get('answers', {})
+    encoded_answers = request.args.get('answers', '')
+    user_answers = decode_answers(encoded_answers)
 
     pivot_df = df_prepared.pivot_table(
         index='user_id',
@@ -89,20 +103,20 @@ def result():
 
     for user_id, row in pivot_df.iterrows():
         matches = sum(
-            1 for q_id_str, ans in user_answers.items()
-            if int(q_id_str) in row.index and row[int(q_id_str)] == ans
+            1 for q_id, ans in user_answers.items()
+            if str(q_id) in row.index and row[int(q_id)] == ans
         )
         if matches > max_matches:
             max_matches = matches
             best_match = user_id
 
-    if best_match is not None:
+    if best_match is None:
+        match_name = "Не найдено совпадений"
+        percent = 0
+        max_matches = 0
+    else:
         match_name = df_prepared[df_prepared['user_id'] == best_match]['user_name'].iloc[0]
         percent = (max_matches / total_questions) * 100
-    else:
-        match_name = "Не найдено"
-        percent = 0.0
-        max_matches = 0
 
     return render_template(
         'result.html',
@@ -112,11 +126,5 @@ def result():
         percent=percent
     )
 
-@app.route('/reset')
-def reset():
-    session.clear()
-    return redirect('/')
-
 if __name__ == '__main__':
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port, debug=True)
+    app.run(host='0.0.0.0', port=5000, debug=True)
